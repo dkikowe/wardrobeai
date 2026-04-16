@@ -56,12 +56,14 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
   // Стейт для логотипа
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoScale, setLogoScale] = useState<number>(100);
+  const [logoPos, setLogoPos] = useState({ x: 50, y: 35 });
 
   // Стейт для текста
   const [customText, setCustomText] = useState<string>("");
   const [textFont, setTextFont] = useState<string>(FONT_OPTIONS[0].value);
   const [textColor, setTextColor] = useState<string>(TEXT_COLORS[0].hex);
   const [textPos, setTextPos] = useState({ x: 50, y: 30 });
+  const [textScale, setTextScale] = useState<number>(100);
 
   // Ссылки для drag-and-drop
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -87,8 +89,9 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
 
     if (dragTarget.current === "text") {
       setTextPos({ x, y });
+    } else if (dragTarget.current === "logo") {
+      setLogoPos({ x, y });
     }
-    // Если понадобится двигать логотип, можно добавить логику сюда
   };
 
   const handleMouseUp = () => {
@@ -161,10 +164,11 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
           {/* Layer 3: Logo (Верхний слой - логотип) */}
           {logoUrl && (
             <div
-              className="absolute z-30 pointer-events-none border border-dashed border-gray-400/30"
+              onMouseDown={handleMouseDown("logo")}
+              className="absolute z-30 pointer-events-auto cursor-move hover:ring-1 hover:ring-dashed hover:ring-gray-400/50 p-2 rounded"
               style={{
-                top: "35%",
-                left: "50%",
+                top: `${logoPos.y}%`,
+                left: `${logoPos.x}%`,
                 transform: "translate(-50%, -50%)",
                 width: "28%",
               }}
@@ -172,7 +176,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
               <img
                 src={logoUrl}
                 alt="Logo"
-                className="w-full h-auto object-contain transition-transform duration-100 ease-linear"
+                className="w-full h-auto object-contain transition-transform duration-100 ease-linear pointer-events-none"
                 style={{ transform: `scale(${logoScale / 100})` }}
               />
             </div>
@@ -197,7 +201,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
                 style={{
                   top: `${textPos.y}%`,
                   left: `${textPos.x}%`,
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(-50%, -50%) scale(${textScale / 100})`,
                   width: "60%",
                   color: textColor,
                   fontFamily: textFont,
@@ -352,6 +356,24 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
                     ))}
                   </div>
                 </div>
+              </div>
+              
+              {/* Ползунок масштаба текста */}
+              <div className="space-y-3 pt-4 border-t border-gray-50">
+                <div className="flex justify-between text-xs uppercase tracking-widest">
+                  <span className="text-gray-500 font-medium">Размер текста</span>
+                  <span className="text-slate-900 font-medium">
+                    {textScale}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  value={textScale}
+                  onChange={(e) => setTextScale(Number(e.target.value))}
+                  className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer accent-slate-900"
+                />
               </div>
             </div>
           </div>
