@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ProductViewer } from './ProductViewer';
 import { VariantSelector } from './VariantSelector';
 import { FileUploader } from './FileUploader';

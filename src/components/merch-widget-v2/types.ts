@@ -2,7 +2,7 @@ export type Color = {
   id: string;
   name: string;
   hex: string;
-  image: string;
+  image?: string; // Сделали image опциональным, чтобы починить mockData
 };
 
 export type PlacementZone = {
@@ -19,6 +19,8 @@ export type Product = {
   price: number;
   colors: Color[];
   zones: PlacementZone[];
+  imageFront?: string;
+  imageBack?: string;
 };
 
 export type LogoState = {

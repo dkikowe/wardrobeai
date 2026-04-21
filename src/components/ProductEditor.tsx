@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { UploadCloud, Trash2 } from "lucide-react";
 import { toBlob } from "html-to-image";
+import axios from "axios";
 import { Product, Color } from "./merch-widget-v2/types";
+
+// --- КОНФИГУРАЦИЯ API ---
+// Раскомментируйте нужный URL для работы
+// const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
 
 interface ProductEditorProps {
   product: Product;
@@ -186,23 +192,19 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
         }
       }
 
-      // 3. Отправляем запрос на бэкенд
-      const response = await fetch('http://localhost:3000/api/apply-print', {
-        method: 'POST',
-        body: formData,
+      // 3. Отправляем запрос на бэкенд через axios
+      const response = await axios.post(`${API_BASE_URL}/api/apply-print`, formData, {
+        responseType: 'blob', // Важно: указываем, что ожидаем бинарный файл в ответ
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       console.log('--- ОТВЕТ ОТ БЭКЕНДА ---');
       console.log('Status:', response.status, response.statusText);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Ошибка от бэкенда:', errorData);
-        throw new Error(errorData.error || 'Ошибка при генерации мокапа');
-      }
-
       // 4. Получаем бинарные данные картинки и создаем URL
-      const resultBlob = await response.blob();
+      const resultBlob = response.data;
       console.log(`Получен Blob от бэкенда (size: ${resultBlob.size} bytes, type: ${resultBlob.type})`);
       
       const imageUrl = URL.createObjectURL(resultBlob);
@@ -211,8 +213,23 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
       setGeneratedMockupUrl(imageUrl);
     } catch (error: any) {
       console.error("--- ПОЛНАЯ ОШИБКА ---", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      alert('Упс, ошибка: ' + (errorMessage === '[object Object]' ? JSON.stringify(error) : errorMessage));
+      
+      // Обработка ошибок axios
+      let errorMessage = "Неизвестная ошибка";
+      if (axios.isAxiosError(error) && error.response) {
+        // Пытаемся прочитать JSON из Blob-ответа с ошибкой
+        try {
+          const errorText = await error.response.data.text();
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || `Ошибка сервера: ${error.response.status}`;
+        } catch (e) {
+          errorMessage = `Ошибка сервера: ${error.response.status}`;
+        }
+      } else {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+      
+      alert('Упс, ошибка: ' + errorMessage);
     } finally {
       setIsGenerating(false);
     }

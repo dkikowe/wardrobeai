@@ -14,10 +14,10 @@ export const ProductViewer: React.FC<ProductViewerProps> = ({
   color,
   zone,
   logo,
-  view,
+  // view, // Убрали неиспользуемую переменную для фикса ошибки TS
 }) => {
   // Поскольку в API у нас только одно фото на вариант, используем его для обоих ракурсов
-  const imageSrc = color.image;
+  const imageSrc = color.image || product.imageFront || '';
 
   return (
     <div className="w-full flex justify-center mb-12">
