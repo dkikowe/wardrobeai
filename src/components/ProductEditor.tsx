@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { UploadCloud, Trash2 } from "lucide-react";
+import { toBlob } from "html-to-image";
 import { Product, Color } from "./merch-widget-v2/types";
 
 interface ProductEditorProps {
@@ -55,6 +56,7 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
 
   // Стейт для логотипа
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoScale, setLogoScale] = useState<number>(100);
   const [logoPos, setLogoPos] = useState({ x: 50, y: 35 });
 
@@ -64,6 +66,11 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
   const [textColor, setTextColor] = useState<string>(TEXT_COLORS[0].hex);
   const [textPos, setTextPos] = useState({ x: 50, y: 30 });
   const [textScale, setTextScale] = useState<number>(100);
+
+  // Стейт для AI Мокапа
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(null);
+  const [printType, setPrintType] = useState("DTF3");
 
   // Ссылки для drag-and-drop
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -118,8 +125,96 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setLogoFile(file);
       setLogoUrl(URL.createObjectURL(file));
       setLogoScale(100);
+    }
+  };
+
+  const handleGenerateMockup = async () => {
+    if (!containerRef.current || !logoFile) return;
+    
+    let imageBlob: Blob | null = null;
+    
+    try {
+      // 1. Делаем снимок всего контейнера предпросмотра ДО включения лоадера
+      // Используем pixelRatio для повышения качества (например, 2)
+      imageBlob = await toBlob(containerRef.current, {
+        quality: 1,
+        pixelRatio: 2,
+        // Убираем cacheBust: true, так как он ломает Blob URL
+      });
+
+      if (!imageBlob) {
+        throw new Error('Не удалось создать снимок мокапа');
+      }
+    } catch (error) {
+      console.error("Ошибка при создании снимка:", error);
+      alert("Не удалось создать снимок для отправки.");
+      return;
+    }
+
+    // ТОЛЬКО ПОСЛЕ успешного создания снимка включаем лоадер
+    setIsGenerating(true);
+
+    try {
+      // 2. Собираем данные в FormData
+      const formData = new FormData();
+      formData.append('garmentImage', imageBlob, 'composed-garment.png');
+      // Логотип больше не отправляем, так как он уже физически на снимке
+      formData.append('printType', printType);
+
+      console.log('--- ОТПРАВКА НА БЭКЕНД ---');
+      for (let [key, value] of formData.entries()) {
+        if (value instanceof Blob) {
+          console.log(`${key}: Blob/File (size: ${value.size} bytes, type: ${value.type}, name: ${(value as any).name || 'N/A'})`);
+          // Добавляем ссылку для просмотра отправляемой картинки
+          if (key === 'garmentImage') {
+            const debugUrl = URL.createObjectURL(value);
+            console.log(`👀 КЛИКНИТЕ СЮДА, ЧТОБЫ УВИДЕТЬ ОТПРАВЛЯЕМУЮ КАРТИНКУ: ${debugUrl}`);
+            
+            // АВТОМАТИЧЕСКОЕ СКАЧИВАНИЕ ДЛЯ ПРОВЕРКИ (чтобы точно увидеть оригинал)
+            const a = document.createElement('a');
+            a.href = debugUrl;
+            a.download = 'debug-garment-image.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        } else {
+          console.log(`${key}: ${value}`);
+        }
+      }
+
+      // 3. Отправляем запрос на бэкенд
+      const response = await fetch('http://localhost:3000/api/apply-print', {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('--- ОТВЕТ ОТ БЭКЕНДА ---');
+      console.log('Status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Ошибка от бэкенда:', errorData);
+        throw new Error(errorData.error || 'Ошибка при генерации мокапа');
+      }
+
+      // 4. Получаем бинарные данные картинки и создаем URL
+      const resultBlob = await response.blob();
+      console.log(`Получен Blob от бэкенда (size: ${resultBlob.size} bytes, type: ${resultBlob.type})`);
+      
+      const imageUrl = URL.createObjectURL(resultBlob);
+      console.log('Сгенерированный локальный URL:', imageUrl);
+      
+      setGeneratedMockupUrl(imageUrl);
+    } catch (error: any) {
+      console.error("--- ПОЛНАЯ ОШИБКА ---", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert('Упс, ошибка: ' + (errorMessage === '[object Object]' ? JSON.stringify(error) : errorMessage));
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -148,6 +243,31 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
           onMouseLeave={handleMouseUp}
           className="relative w-full lg:w-1/2 aspect-[3/4] lg:aspect-auto lg:h-[80vh] lg:sticky lg:top-8 flex items-center justify-center bg-white rounded-3xl overflow-hidden flex-shrink-0 border border-gray-200 shadow-sm"
         >
+          {/* Лоадер генерации AI-мокапа */}
+          {isGenerating && (
+            <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+              <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-900 font-medium animate-pulse">Нейросеть наносит принт...</p>
+              <p className="text-sm text-gray-500 mt-2">Это может занять 5-15 секунд</p>
+            </div>
+          )}
+
+          {/* Результат генерации AI-мокапа */}
+          {generatedMockupUrl ? (
+            <div className="absolute inset-0 z-40 bg-white flex items-center justify-center">
+              <img src={generatedMockupUrl} alt="AI Mockup" className="w-full h-full object-contain" />
+              <button
+                onClick={() => {
+                  URL.revokeObjectURL(generatedMockupUrl);
+                  setGeneratedMockupUrl(null);
+                }}
+                className="absolute top-6 right-6 bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-full text-sm font-medium text-slate-900 hover:bg-white transition-colors shadow-md border border-gray-200"
+              >
+                Вернуться к редактору
+              </button>
+            </div>
+          ) : null}
+
           {/* Layer 1: Base (Нижний слой - фото модели) */}
           <img
             src={MODEL_ASSETS[selectedModel].base}
@@ -214,13 +334,31 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
                     textColor === "#FFFFFF"
                       ? "0px 1px 3px rgba(0,0,0,0.3)"
                       : "none",
-                  mixBlendMode: textColor === "#000000" ? "multiply" : "normal",
                 }}
               >
                 {customText}
               </div>
             </div>
           )}
+
+          {/* Layer 5: Shadow Overlay (Тени поверх принта и логотипа) */}
+          <div
+            className="absolute inset-0 z-40 pointer-events-none mix-blend-multiply opacity-60"
+            style={{
+              WebkitMaskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
+              WebkitMaskSize: "contain",
+              WebkitMaskPosition: "center",
+              maskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
+              maskSize: "contain",
+              maskPosition: "center",
+            }}
+          >
+            <img
+              src={MODEL_ASSETS[selectedModel].base}
+              alt="Shadow Overlay"
+              className="w-full h-full object-contain grayscale"
+            />
+          </div>
         </div>
 
         {/* ПРАВАЯ КОЛОНКА: ПАНЕЛЬ УПРАВЛЕНИЯ */}
@@ -422,7 +560,14 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
                         Логотип загружен
                       </p>
                       <button
-                        onClick={() => setLogoUrl(null)}
+                        onClick={() => {
+                          setLogoUrl(null);
+                          setLogoFile(null);
+                          if (generatedMockupUrl) {
+                            URL.revokeObjectURL(generatedMockupUrl);
+                            setGeneratedMockupUrl(null);
+                          }
+                        }}
                         className="text-xs text-red-500 hover:text-red-600 mt-1 flex items-center gap-1 transition-colors"
                       >
                         <Trash2 className="w-3 h-3" /> Удалить
@@ -450,6 +595,58 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
               </div>
             )}
           </div>
+
+          {/* Блок "AI Мокап" */}
+          {logoUrl && (
+            <>
+              <div className="h-px w-full bg-gray-100" />
+              <div className="space-y-4">
+                <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                  </span>
+                  AI Генерация
+                </h3>
+                <div className="p-5 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl shadow-sm space-y-4">
+                  <p className="text-sm text-indigo-900">
+                    Посмотрите, как будет выглядеть принт в реальности с помощью нейросети Imagen 3.
+                  </p>
+                  <div className="space-y-2">
+                    <label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider">
+                      Тип печати
+                    </label>
+                    <select
+                      value={printType}
+                      onChange={(e) => setPrintType(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer"
+                    >
+                      <option value="DTF3">DTF3</option>
+                      <option value="B2">B2</option>
+                      <option value="D2">D2</option>
+                      <option value="F1">F1</option>
+                      <option value="F2">F2</option>
+                      <option value="DTG2">DTG2</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleGenerateMockup}
+                    disabled={isGenerating}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white py-3 rounded-xl font-medium text-sm transition-all shadow-sm flex items-center justify-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        Генерация...
+                      </>
+                    ) : (
+                      "Сгенерировать фотореалистичный мокап"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Кнопка добавления в корзину */}
           <div className="pt-6">
