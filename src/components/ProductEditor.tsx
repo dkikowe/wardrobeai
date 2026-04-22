@@ -1,30 +1,88 @@
 import React, { useRef, useState, useEffect } from "react";
-import { UploadCloud, Trash2, ArrowLeft, Image as ImageIcon, Type } from "lucide-react";
+import {
+  UploadCloud,
+  Trash2,
+  ArrowLeft,
+  Image as ImageIcon,
+  Type,
+} from "lucide-react";
 import { toBlob } from "html-to-image";
 import axios from "axios";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Product, Color } from "./merch-widget-v2/types";
 
 // --- КОНФИГУРАЦИЯ API ---
-// const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
+// const API_BASE_URL = "http://localhost:3000";
 
 // --- ШАГ 2: ОБЛАСТИ НАНЕСЕНИЯ (Зеленые зоны) ---
-const PRINT_AREAS: Record<string, { id: string; label: string; top: string; left: string; width: string; height: string }> = {
-  chest: { id: 'chest', label: 'Грудь (Большая)', top: '25%', left: '28%', width: '44%', height: '42%' },
-  chest_small: { id: 'chest_small', label: 'Грудь (Лого)', top: '27%', left: '42%', width: '16%', height: '8%' },
-  bottom: { id: 'bottom', label: 'Низ', top: '67%', left: '28%', width: '44%', height: '12%' },
-  back: { id: 'back', label: 'Спина', top: '25%', left: '28%', width: '44%', height: '42%' },
-  left_sleeve: { id: 'left_sleeve', label: 'Левый рукав', top: '40%', left: '78%', width: '12%', height: '9%' },
-  right_sleeve: { id: 'right_sleeve', label: 'Правый рукав', top: '40%', left: '10%', width: '12%', height: '9%' }
+const PRINT_AREAS: Record<
+  string,
+  {
+    id: string;
+    label: string;
+    top: string;
+    left: string;
+    width: string;
+    height: string;
+  }
+> = {
+  chest: {
+    id: "chest",
+    label: "Грудь (Большая)",
+    top: "25%",
+    left: "28%",
+    width: "44%",
+    height: "42%",
+  },
+  chest_small: {
+    id: "chest_small",
+    label: "Грудь (Лого)",
+    top: "27%",
+    left: "42%",
+    width: "16%",
+    height: "8%",
+  },
+  bottom: {
+    id: "bottom",
+    label: "Низ",
+    top: "67%",
+    left: "28%",
+    width: "44%",
+    height: "12%",
+  },
+  back: {
+    id: "back",
+    label: "Спина",
+    top: "25%",
+    left: "28%",
+    width: "44%",
+    height: "42%",
+  },
+  left_sleeve: {
+    id: "left_sleeve",
+    label: "Левый рукав",
+    top: "40%",
+    left: "78%",
+    width: "12%",
+    height: "9%",
+  },
+  right_sleeve: {
+    id: "right_sleeve",
+    label: "Правый рукав",
+    top: "40%",
+    left: "10%",
+    width: "12%",
+    height: "9%",
+  },
 };
 
 const PRINT_TYPES = [
-  { id: 'DTF3', label: 'DTF Печать (Яркая, пленка)' },
-  { id: 'B2', label: 'Шелкография (Пластизоль)' },
-  { id: 'D2', label: 'Шелкография с трансфером' },
-  { id: 'F1', label: 'Термопленка (Flex)' },
-  { id: 'DTG2', label: 'Прямая печать (DTG)' },
+  { id: "DTF3", label: "DTF Печать (Яркая, пленка)" },
+  { id: "B2", label: "Шелкография (Пластизоль)" },
+  { id: "D2", label: "Шелкография с трансфером" },
+  { id: "F1", label: "Термопленка (Flex)" },
+  { id: "DTG2", label: "Прямая печать (DTG)" },
 ];
 
 const FONT_OPTIONS = [
@@ -40,29 +98,36 @@ const TEXT_COLORS = [
   { id: "neon", hex: "#39FF14" },
 ];
 
-export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }> = ({ products, onBack }) => {
+export const ProductEditor: React.FC<{
+  products: Product[];
+  onBack: () => void;
+}> = ({ products, onBack }) => {
   const { productId } = useParams<{ productId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
 
   // Ищем продукт и цвет из роутера
-  const initialProduct = products.find(p => p.id === productId) || products[0];
+  const initialProduct =
+    products.find((p) => p.id === productId) || products[0];
   const colorIdFromState = location.state?.colorId;
-  const initialColor = initialProduct?.colors.find(c => c.id === colorIdFromState) || initialProduct?.colors[0];
+  const initialColor =
+    initialProduct?.colors.find((c) => c.id === colorIdFromState) ||
+    initialProduct?.colors[0];
 
   // --- СОСТОЯНИЯ КОНСТРУКТОРА ---
-  const [selectedProduct, setSelectedProduct] = useState<Product>(initialProduct);
+  const [selectedProduct, setSelectedProduct] =
+    useState<Product>(initialProduct);
   const [selectedColor, setSelectedColor] = useState<Color>(initialColor);
   const [selectedZone, setSelectedZone] = useState(PRINT_AREAS.chest);
   const [printType, setPrintType] = useState(PRINT_TYPES[0].id);
-  const [modelGender, setModelGender] = useState<'man' | 'woman'>('man');
+  const [modelGender, setModelGender] = useState<"man" | "woman">("man");
 
   // Обновляем стейт, если изменился URL
   useEffect(() => {
-    const p = products.find(p => p.id === productId) || products[0];
+    const p = products.find((p) => p.id === productId) || products[0];
     if (p) {
       setSelectedProduct(p);
-      const c = p.colors.find(c => c.id === colorIdFromState) || p.colors[0];
+      const c = p.colors.find((c) => c.id === colorIdFromState) || p.colors[0];
       setSelectedColor(c);
     }
   }, [productId, colorIdFromState, products]);
@@ -82,7 +147,9 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
   // Стейт для AI Мокапа
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(null);
+  const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(
+    null,
+  );
 
   // Ссылки
   const previewRef = useRef<HTMLDivElement>(null);
@@ -91,11 +158,14 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
   // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
   const handleProductChange = (newProductId: string) => {
-    const product = products.find(p => p.id === newProductId) || products[0];
+    const product = products.find((p) => p.id === newProductId) || products[0];
     setSelectedProduct(product);
     setSelectedColor(product.colors[0]);
     // Опционально: обновляем URL
-    navigate(`/editor/${product.id}`, { state: { colorId: product.colors[0].id }, replace: true });
+    navigate(`/editor/${product.id}`, {
+      state: { colorId: product.colors[0].id },
+      replace: true,
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,16 +178,17 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
   };
 
   // --- DRAG AND DROP (ВНУТРИ ЗОНЫ) ---
-  const handleMouseDown = (target: "text" | "logo") => (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragTarget.current = target;
-  };
+  const handleMouseDown =
+    (target: "text" | "logo") => (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragTarget.current = target;
+    };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!dragTarget.current || !zoneRef.current) return;
-    
+
     const rect = zoneRef.current.getBoundingClientRect();
-    
+
     // Вычисляем позицию мыши относительно зоны в процентах
     let x = ((e.clientX - rect.left) / rect.width) * 100;
     let y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -139,34 +210,71 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
   const mapColorToEnglish = (ruColor: string): string => {
     const lower = ruColor.toLowerCase();
-    if (lower.includes('бел') || lower.includes('молочн')) return 'white';
-    if (lower.includes('черн')) return 'black';
-    if (lower.includes('красн') || lower.includes('бордов') || lower.includes('гранат') || lower.includes('вишнев')) return 'red';
-    if (lower.includes('син') || lower.includes('кобальт') || lower.includes('джинс') || lower.includes('navy') || lower.includes('royal')) return 'blue';
-    if (lower.includes('голуб')) return 'lightblue';
-    if (lower.includes('зелен') || lower.includes('лайм') || lower.includes('яблоко') || lower.includes('хаки') || lower.includes('изумруд')) return 'green';
-    if (lower.includes('желт') || lower.includes('лимон')) return 'yellow';
-    if (lower.includes('оранж') || lower.includes('абрикос')) return 'orange';
-    if (lower.includes('фиолет') || lower.includes('лавандов')) return 'purple';
-    if (lower.includes('роз') || lower.includes('орхидея') || lower.includes('фуксия') || lower.includes('candy')) return 'pink';
-    if (lower.includes('сер') || lower.includes('меланж') || lower.includes('сталь') || lower.includes('графит')) return 'gray';
-    if (lower.includes('коричн') || lower.includes('шоколад') || lower.includes('терракот')) return 'brown';
-    if (lower.includes('бежев') || lower.includes('песочн')) return 'beige';
-    if (lower.includes('бирюз')) return 'turquoise';
-    return 'white'; // По умолчанию
+    if (lower.includes("бел") || lower.includes("молочн")) return "white";
+    if (lower.includes("черн")) return "black";
+    if (
+      lower.includes("красн") ||
+      lower.includes("бордов") ||
+      lower.includes("гранат") ||
+      lower.includes("вишнев")
+    )
+      return "red";
+    if (
+      lower.includes("син") ||
+      lower.includes("кобальт") ||
+      lower.includes("джинс") ||
+      lower.includes("navy") ||
+      lower.includes("royal")
+    )
+      return "blue";
+    if (lower.includes("голуб")) return "lightblue";
+    if (
+      lower.includes("зелен") ||
+      lower.includes("лайм") ||
+      lower.includes("яблоко") ||
+      lower.includes("хаки") ||
+      lower.includes("изумруд")
+    )
+      return "green";
+    if (lower.includes("желт") || lower.includes("лимон")) return "yellow";
+    if (lower.includes("оранж") || lower.includes("абрикос")) return "orange";
+    if (lower.includes("фиолет") || lower.includes("лавандов")) return "purple";
+    if (
+      lower.includes("роз") ||
+      lower.includes("орхидея") ||
+      lower.includes("фуксия") ||
+      lower.includes("candy")
+    )
+      return "pink";
+    if (
+      lower.includes("сер") ||
+      lower.includes("меланж") ||
+      lower.includes("сталь") ||
+      lower.includes("графит")
+    )
+      return "gray";
+    if (
+      lower.includes("коричн") ||
+      lower.includes("шоколад") ||
+      lower.includes("терракот")
+    )
+      return "brown";
+    if (lower.includes("бежев") || lower.includes("песочн")) return "beige";
+    if (lower.includes("бирюз")) return "turquoise";
+    return "white"; // По умолчанию
   };
 
   // --- ГЕНЕРАЦИЯ AI МОКАПА ---
   const handleGenerateMockup = async () => {
     if (!previewRef.current) return;
-    
+
     // 1. Прячем пунктирные рамки зон перед скриншотом
     setIsCapturing(true);
     // Ждем применения стилей React
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     let imageBlob: Blob | null = null;
-    
+
     try {
       // 2. Делаем снимок блока предпросмотра (2D-эскиз + наложенный дизайн) ДО включения лоадера
       imageBlob = await toBlob(previewRef.current, {
@@ -175,7 +283,7 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
       });
 
       if (!imageBlob) {
-        throw new Error('Не удалось создать снимок мокапа');
+        throw new Error("Не удалось создать снимок мокапа");
       }
     } catch (error) {
       console.error("Ошибка при создании снимка:", error);
@@ -191,11 +299,11 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
     try {
       // Собираем данные в FormData согласно новой спецификации API
       const formData = new FormData();
-      
+
       // Определяем modelType на основе пола, типа изделия и выбранной зоны
-      const isJacket = selectedProduct.name.toLowerCase().includes('жилет');
-      const isBack = selectedZone.id === 'back';
-      
+      const isJacket = selectedProduct.name.toLowerCase().includes("жилет");
+      const isBack = selectedZone.id === "back";
+
       let currentModelType = `${modelGender}_shirt_front`;
       if (isJacket) {
         currentModelType = `${modelGender}_jacket`;
@@ -203,28 +311,30 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
         currentModelType = `${modelGender}_shirt_back`;
       }
 
-      formData.append('garmentImage', imageBlob, 'composed-garment.png');
-      formData.append('modelGender', modelGender); // Возвращаем старый параметр
-      formData.append('modelType', currentModelType); // Добавляем новый параметр
-      formData.append('garmentColor', mapColorToEnglish(selectedColor.name));
-      formData.append('printType', printType);
+      formData.append("garmentImage", imageBlob, "composed-garment.png");
+      formData.append("modelGender", modelGender); // Возвращаем старый параметр
+      formData.append("modelType", currentModelType); // Добавляем новый параметр
+      formData.append("garmentColor", mapColorToEnglish(selectedColor.name));
+      formData.append("printType", printType);
 
-      console.log('=========================================');
-      console.log('🚀 ОТПРАВКА ЗАПРОСА НА БЭКЕНД');
+      console.log("=========================================");
+      console.log("🚀 ОТПРАВКА ЗАПРОСА НА БЭКЕНД");
       console.log(`URL: ${API_BASE_URL}/api/apply-print`);
-      console.log('Метод: POST');
-      console.log('Данные (FormData):');
+      console.log("Метод: POST");
+      console.log("Данные (FormData):");
       for (let [key, value] of formData.entries()) {
         if (value instanceof Blob) {
-          console.log(` - [${key}]: Файл (Blob), размер: ${value.size} байт, тип: ${value.type}`);
-          if (key === 'garmentImage') {
+          console.log(
+            ` - [${key}]: Файл (Blob), размер: ${value.size} байт, тип: ${value.type}`,
+          );
+          if (key === "garmentImage") {
             const debugUrl = URL.createObjectURL(value);
             console.log(`   👀 ССЫЛКА НА ОТПРАВЛЯЕМУЮ КАРТИНКУ: ${debugUrl}`);
-            
+
             // Авто-скачивание для дебага
-            const a = document.createElement('a');
+            const a = document.createElement("a");
             a.href = debugUrl;
-            a.download = 'debug-garment-image.png';
+            a.download = "debug-garment-image.png";
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -233,16 +343,20 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
           console.log(` - [${key}]: "${value}"`);
         }
       }
-      console.log('=========================================');
+      console.log("=========================================");
 
       // Отправляем запрос на бэкенд через axios
-      const response = await axios.post(`${API_BASE_URL}/api/apply-print`, formData, {
-        responseType: 'blob',
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const response = await axios.post(
+        `${API_BASE_URL}/api/apply-print`,
+        formData,
+        {
+          responseType: "blob",
+          headers: { "Content-Type": "multipart/form-data" },
+        },
+      );
 
-      console.log('--- ОТВЕТ ОТ БЭКЕНДА ---');
-      console.log('Status:', response.status, response.statusText);
+      console.log("--- ОТВЕТ ОТ БЭКЕНДА ---");
+      console.log("Status:", response.status, response.statusText);
 
       // Получаем бинарные данные картинки и создаем URL
       const resultBlob = response.data;
@@ -255,14 +369,15 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
         try {
           const errorText = await error.response.data.text();
           const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error || `Ошибка сервера: ${error.response.status}`;
+          errorMessage =
+            errorJson.error || `Ошибка сервера: ${error.response.status}`;
         } catch (e) {
           errorMessage = `Ошибка сервера: ${error.response.status}`;
         }
       } else {
         errorMessage = error instanceof Error ? error.message : String(error);
       }
-      alert('Упс, ошибка: ' + errorMessage);
+      alert("Упс, ошибка: " + errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -277,16 +392,20 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
       {/* Навигация */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <button onClick={onBack} className="text-sm font-medium text-gray-600 hover:text-slate-900 flex items-center gap-2 transition-colors">
+          <button
+            onClick={onBack}
+            className="text-sm font-medium text-gray-600 hover:text-slate-900 flex items-center gap-2 transition-colors"
+          >
             <ArrowLeft className="w-4 h-4" /> Назад в каталог
           </button>
-          <div className="font-bold text-lg tracking-tight">B2B Merch Studio</div>
+          <div className="font-bold text-lg tracking-tight">
+            B2B Merch Studio
+          </div>
           <div className="w-24"></div> {/* Spacer */}
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 w-full flex-1 flex flex-col lg:flex-row gap-8 items-start">
-        
         {/* ЛЕВАЯ КОЛОНКА: ЗОНА ПРЕДПРОСМОТРА */}
         <div className="w-full lg:w-1/2 lg:sticky lg:top-24">
           <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-200">
@@ -301,15 +420,23 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
               {isGenerating && (
                 <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
                   <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                  <p className="text-indigo-900 font-medium animate-pulse">Генерация 3D-мокапа...</p>
-                  <p className="text-sm text-gray-500 mt-2">Ожидайте 5-15 секунд</p>
+                  <p className="text-indigo-900 font-medium animate-pulse">
+                    Генерация 3D-мокапа...
+                  </p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Ожидайте 5-15 секунд
+                  </p>
                 </div>
               )}
 
               {/* Результат AI */}
               {generatedMockupUrl && (
                 <div className="absolute inset-0 z-40 bg-white flex items-center justify-center">
-                  <img src={generatedMockupUrl} alt="AI Mockup" className="w-full h-full object-contain" />
+                  <img
+                    src={generatedMockupUrl}
+                    alt="AI Mockup"
+                    className="w-full h-full object-contain"
+                  />
                   <button
                     onClick={() => {
                       URL.revokeObjectURL(generatedMockupUrl);
@@ -342,8 +469,8 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                       isCapturing
                         ? "border-none bg-transparent" // При скриншоте убираем все рамки и фоны
                         : isSelected
-                        ? "border-2 border-dashed border-emerald-400 bg-emerald-400/20 cursor-default"
-                        : "border-2 border-dashed border-emerald-400/60 hover:bg-emerald-400/10 cursor-pointer"
+                          ? "border-2 border-dashed border-emerald-400 bg-emerald-400/20 cursor-default"
+                          : "border-2 border-dashed border-emerald-400/60 hover:bg-emerald-400/10 cursor-pointer"
                     }`}
                     style={{
                       top: zone.top,
@@ -352,19 +479,26 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                       height: zone.height,
                     }}
                   >
-                    {zone.id.includes('sleeve') && !isCapturing && (
+                    {zone.id.includes("sleeve") && !isCapturing && (
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className={`w-[75%] h-[75%] rounded-full border-2 border-dashed ${isSelected ? 'border-emerald-400' : 'border-emerald-400/60'}`}></div>
+                        <div
+                          className={`w-[75%] h-[75%] rounded-full border-2 border-dashed ${isSelected ? "border-emerald-400" : "border-emerald-400/60"}`}
+                        ></div>
                       </div>
                     )}
                     {isSelected && (
-                      <div ref={zoneRef} className="absolute inset-0 w-full h-full">
+                      <div
+                        ref={zoneRef}
+                        className="absolute inset-0 w-full h-full"
+                      >
                         {/* Логотип */}
                         {logoUrl && (
                           <div
                             onMouseDown={handleMouseDown("logo")}
                             className={`absolute z-30 flex items-center justify-center p-1 rounded ${
-                              isCapturing ? "" : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                              isCapturing
+                                ? ""
+                                : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
                             }`}
                             style={{
                               top: `${logoPos.y}%`,
@@ -387,7 +521,9 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                           <div
                             onMouseDown={handleMouseDown("text")}
                             className={`absolute z-30 flex items-center justify-center p-1 rounded ${
-                              isCapturing ? "" : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                              isCapturing
+                                ? ""
+                                : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
                             }`}
                             style={{
                               top: `${textPos.y}%`,
@@ -399,7 +535,9 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                               textAlign: "center",
                               whiteSpace: "pre-wrap",
                               fontSize: "clamp(12px, 3vw, 24px)",
-                              fontWeight: textFont.includes("Pacifico") ? "normal" : "bold",
+                              fontWeight: textFont.includes("Pacifico")
+                                ? "normal"
+                                : "bold",
                               lineHeight: "1.2",
                             }}
                           >
@@ -417,11 +555,12 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
         {/* ПРАВАЯ КОЛОНКА: ПАНЕЛЬ УПРАВЛЕНИЯ */}
         <div className="w-full lg:w-1/2 flex flex-col space-y-6 pb-12">
-          
           {/* ШАГ 1: Базовые настройки */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 mb-4">1. Выбор изделия</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4">
+                1. Выбор изделия
+              </h2>
 
               {/* Каталог */}
               <select
@@ -430,14 +569,18 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer font-medium"
               >
                 {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             {/* Цвет */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Цвет изделия</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                Цвет изделия
+              </h3>
               <div className="flex flex-wrap gap-3">
                 {selectedProduct.colors.map((c) => (
                   <button
@@ -445,10 +588,17 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                     onClick={() => setSelectedColor(c)}
                     title={c.name}
                     className={`w-12 h-12 rounded-xl border-2 transition-all flex items-center justify-center focus:outline-none overflow-hidden bg-slate-50 ${
-                      selectedColor.id === c.id ? "border-indigo-500 scale-110 shadow-md" : "border-gray-200 hover:scale-105 hover:border-gray-300"
+                      selectedColor.id === c.id
+                        ? "border-indigo-500 scale-110 shadow-md"
+                        : "border-gray-200 hover:scale-105 hover:border-gray-300"
                     }`}
                   >
-                    <img src={c.image} alt={c.name} crossOrigin="anonymous" className="w-full h-full object-cover" />
+                    <img
+                      src={c.image}
+                      alt={c.name}
+                      crossOrigin="anonymous"
+                      className="w-full h-full object-cover"
+                    />
                   </button>
                 ))}
               </div>
@@ -457,18 +607,24 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
           {/* ШАГ 2: Нанесение */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
-            <h2 className="text-lg font-bold text-slate-900">2. Параметры нанесения</h2>
-            
+            <h2 className="text-lg font-bold text-slate-900">
+              2. Параметры нанесения
+            </h2>
+
             {/* Зона */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Область печати</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                Область печати
+              </h3>
               <div className="grid grid-cols-2 gap-2">
                 {Object.values(PRINT_AREAS).map((zone) => (
                   <button
                     key={zone.id}
                     onClick={() => setSelectedZone(zone)}
                     className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all border ${
-                      selectedZone.id === zone.id ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-slate-600 hover:bg-slate-50"
+                      selectedZone.id === zone.id
+                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                        : "bg-white border-gray-200 text-slate-600 hover:bg-slate-50"
                     }`}
                   >
                     {zone.label}
@@ -479,34 +635,44 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
             {/* Тип печати */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Технология печати</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                Технология печати
+              </h3>
               <select
                 value={printType}
                 onChange={(e) => setPrintType(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer"
               >
                 {PRINT_TYPES.map((pt) => (
-                  <option key={pt.id} value={pt.id}>{pt.label}</option>
+                  <option key={pt.id} value={pt.id}>
+                    {pt.label}
+                  </option>
                 ))}
               </select>
             </div>
 
             {/* Пол модели (AI) */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Пол модели (AI)</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">
+                Пол модели (AI)
+              </h3>
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 <button
-                  onClick={() => setModelGender('man')}
+                  onClick={() => setModelGender("man")}
                   className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                    modelGender === 'man' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    modelGender === "man"
+                      ? "bg-white text-indigo-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
                   Мужчина
                 </button>
                 <button
-                  onClick={() => setModelGender('woman')}
+                  onClick={() => setModelGender("woman")}
                   className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                    modelGender === 'woman' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    modelGender === "woman"
+                      ? "bg-white text-indigo-900 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
                   Женщина
@@ -518,34 +684,62 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
           {/* ШАГ 3: Дизайн */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
             <h2 className="text-lg font-bold text-slate-900">3. Ваш дизайн</h2>
-            
+
             {/* Логотип */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> Логотип</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <ImageIcon className="w-4 h-4" /> Логотип
+              </h3>
               {!logoUrl ? (
                 <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors group">
                   <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors mb-2" />
-                  <span className="text-sm font-medium text-slate-600">Загрузить PNG / SVG</span>
-                  <input type="file" className="hidden" accept=".svg,.png,.jpg,.jpeg" onChange={handleFileUpload} />
+                  <span className="text-sm font-medium text-slate-600">
+                    Загрузить PNG / SVG
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".svg,.png,.jpg,.jpeg"
+                    onChange={handleFileUpload}
+                  />
                 </label>
               ) : (
                 <div className="p-4 bg-slate-50 border border-gray-200 rounded-2xl space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-white rounded-lg border border-gray-200 p-1 flex items-center justify-center">
-                        <img src={logoUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                        <img
+                          src={logoUrl}
+                          alt="Preview"
+                          className="max-w-full max-h-full object-contain"
+                        />
                       </div>
-                      <span className="text-sm font-medium text-slate-700">Логотип загружен</span>
+                      <span className="text-sm font-medium text-slate-700">
+                        Логотип загружен
+                      </span>
                     </div>
-                    <button onClick={() => { setLogoUrl(null); }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                    <button
+                      onClick={() => {
+                        setLogoUrl(null);
+                      }}
+                      className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs text-slate-500 font-medium">
-                      <span>Масштаб</span><span>{logoScale}%</span>
+                      <span>Масштаб</span>
+                      <span>{logoScale}%</span>
                     </div>
-                    <input type="range" min="30" max="200" value={logoScale} onChange={(e) => setLogoScale(Number(e.target.value))} className="w-full accent-indigo-600" />
+                    <input
+                      type="range"
+                      min="30"
+                      max="200"
+                      value={logoScale}
+                      onChange={(e) => setLogoScale(Number(e.target.value))}
+                      className="w-full accent-indigo-600"
+                    />
                   </div>
                 </div>
               )}
@@ -555,7 +749,9 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
 
             {/* Текст */}
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><Type className="w-4 h-4"/> Текст</h3>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <Type className="w-4 h-4" /> Текст
+              </h3>
               <textarea
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
@@ -564,20 +760,45 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
                 rows={2}
               />
               <div className="grid grid-cols-2 gap-4 mb-4">
-                <select value={textFont} onChange={(e) => setTextFont(e.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white">
-                  {FONT_OPTIONS.map((font) => <option key={font.label} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}
+                <select
+                  value={textFont}
+                  onChange={(e) => setTextFont(e.target.value)}
+                  className="px-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white"
+                >
+                  {FONT_OPTIONS.map((font) => (
+                    <option
+                      key={font.label}
+                      value={font.value}
+                      style={{ fontFamily: font.value }}
+                    >
+                      {font.label}
+                    </option>
+                  ))}
                 </select>
                 <div className="flex gap-2 items-center justify-end">
                   {TEXT_COLORS.map((c) => (
-                    <button key={c.id} onClick={() => setTextColor(c.hex)} className={`w-8 h-8 rounded-full border-2 transition-all ${textColor === c.hex ? "border-indigo-500 scale-110" : "border-gray-200 hover:scale-105"}`} style={{ backgroundColor: c.hex }} />
+                    <button
+                      key={c.id}
+                      onClick={() => setTextColor(c.hex)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${textColor === c.hex ? "border-indigo-500 scale-110" : "border-gray-200 hover:scale-105"}`}
+                      style={{ backgroundColor: c.hex }}
+                    />
                   ))}
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-xs text-slate-500 font-medium">
-                  <span>Размер текста</span><span>{textScale}%</span>
+                  <span>Размер текста</span>
+                  <span>{textScale}%</span>
                 </div>
-                <input type="range" min="50" max="200" value={textScale} onChange={(e) => setTextScale(Number(e.target.value))} className="w-full accent-indigo-600" />
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  value={textScale}
+                  onChange={(e) => setTextScale(Number(e.target.value))}
+                  className="w-full accent-indigo-600"
+                />
               </div>
             </div>
           </div>
@@ -589,12 +810,14 @@ export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }
             className="w-full bg-slate-900 hover:bg-indigo-600 disabled:bg-slate-300 text-white py-4 rounded-2xl font-bold text-base transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center gap-3"
           >
             {isGenerating ? (
-              <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Создаем магию...</>
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>{" "}
+                Создаем магию...
+              </>
             ) : (
               "Сгенерировать 3D-мокап"
             )}
           </button>
-
         </div>
       </div>
     </div>
