@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/n2b-images/:path*",
+      "destination": "https://n2b.su/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
