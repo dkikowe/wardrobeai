@@ -1,7 +1,9 @@
 import catalogData from '../../catalog.json';
 import { Product, Color } from '../components/merch-widget-v2/types';
 
-const BASE_URL = "https://n2b.su";
+// Используем прокси для локальной разработки, чтобы обойти CORS при html-to-image
+// В Vite import.meta.env.DEV доступно, но TS может ругаться, поэтому используем (import.meta as any).env
+const BASE_URL = (import.meta as any).env?.DEV ? "/n2b-images" : "https://n2b.su";
 
 // Простая эвристика для определения HEX цвета по русскому названию (для кружочков)
 const getColorHex = (name: string): string => {

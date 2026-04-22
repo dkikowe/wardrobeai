@@ -1,104 +1,130 @@
-import React, { useMemo, useState } from "react";
-import { UploadCloud, Trash2 } from "lucide-react";
+import React, { useRef, useState, useEffect } from "react";
+import { UploadCloud, Trash2, ArrowLeft, Image as ImageIcon, Type } from "lucide-react";
 import { toBlob } from "html-to-image";
 import axios from "axios";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { Product, Color } from "./merch-widget-v2/types";
 
 // --- КОНФИГУРАЦИЯ API ---
-// Раскомментируйте нужный URL для работы
-// const API_BASE_URL = "http://localhost:3000";
-const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
+// const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
+const API_BASE_URL = "http://localhost:3000";
 
-interface ProductEditorProps {
-  product: Product;
-  initialColor: Color;
-  onBack: () => void;
-}
-
-type ModelType = "man" | "woman" | "polo";
-
-const MODEL_ASSETS = {
-  man: {
-    base: "/model777.png",
-    mask: "/maska.png",
-  },
-  woman: {
-    base: "https://n2b.su/static/images/woman.png",
-    mask: "/mask-woman.png", // Заглушка для женской модели
-  },
-  polo: {
-    base: "/modelishe.png",
-    mask: "/topmaska.png",
-  },
+// --- ШАГ 2: ОБЛАСТИ НАНЕСЕНИЯ (Зеленые зоны) ---
+const PRINT_AREAS: Record<string, { id: string; label: string; top: string; left: string; width: string; height: string }> = {
+  chest: { id: 'chest', label: 'Грудь (Большая)', top: '25%', left: '28%', width: '44%', height: '42%' },
+  chest_small: { id: 'chest_small', label: 'Грудь (Лого)', top: '27%', left: '42%', width: '16%', height: '8%' },
+  bottom: { id: 'bottom', label: 'Низ', top: '67%', left: '28%', width: '44%', height: '12%' },
+  back: { id: 'back', label: 'Спина', top: '25%', left: '28%', width: '44%', height: '42%' },
+  left_sleeve: { id: 'left_sleeve', label: 'Левый рукав', top: '40%', left: '78%', width: '12%', height: '9%' },
+  right_sleeve: { id: 'right_sleeve', label: 'Правый рукав', top: '40%', left: '10%', width: '12%', height: '9%' }
 };
+
+const PRINT_TYPES = [
+  { id: 'DTF3', label: 'DTF Печать (Яркая, пленка)' },
+  { id: 'B2', label: 'Шелкография (Пластизоль)' },
+  { id: 'D2', label: 'Шелкография с трансфером' },
+  { id: 'F1', label: 'Термопленка (Flex)' },
+  { id: 'DTG2', label: 'Прямая печать (DTG)' },
+];
 
 const FONT_OPTIONS = [
   { label: "Inter", value: '"Inter", sans-serif' },
-  { label: "Roboto", value: '"Roboto", sans-serif' },
-  { label: "Montserrat", value: '"Montserrat", sans-serif' },
-  { label: "Pacifico", value: '"Pacifico", cursive' },
   { label: "Bebas Neue", value: '"Bebas Neue", sans-serif' },
+  { label: "Pacifico", value: '"Pacifico", cursive' },
 ];
 
 const TEXT_COLORS = [
   { id: "white", hex: "#FFFFFF" },
   { id: "black", hex: "#000000" },
   { id: "red", hex: "#EF4444" },
-  { id: "yellow", hex: "#EAB308" },
   { id: "neon", hex: "#39FF14" },
 ];
 
-export const ProductEditor: React.FC<ProductEditorProps> = ({
-  product,
-  initialColor,
-  onBack,
-}) => {
-  // Стейт для моделей (мужская/женская) и архитектуры масок
-  const isPolo = product.name.toLowerCase().includes("поло");
-  const [selectedModel, setSelectedModel] = useState<ModelType>(
-    isPolo ? "polo" : "man",
-  );
+export const ProductEditor: React.FC<{ products: Product[]; onBack: () => void }> = ({ products, onBack }) => {
+  const { productId } = useParams<{ productId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Ищем продукт и цвет из роутера
+  const initialProduct = products.find(p => p.id === productId) || products[0];
+  const colorIdFromState = location.state?.colorId;
+  const initialColor = initialProduct?.colors.find(c => c.id === colorIdFromState) || initialProduct?.colors[0];
+
+  // --- СОСТОЯНИЯ КОНСТРУКТОРА ---
+  const [selectedProduct, setSelectedProduct] = useState<Product>(initialProduct);
   const [selectedColor, setSelectedColor] = useState<Color>(initialColor);
+  const [selectedZone, setSelectedZone] = useState(PRINT_AREAS.chest);
+  const [printType, setPrintType] = useState(PRINT_TYPES[0].id);
+  const [modelGender, setModelGender] = useState<'man' | 'woman'>('man');
+
+  // Обновляем стейт, если изменился URL
+  useEffect(() => {
+    const p = products.find(p => p.id === productId) || products[0];
+    if (p) {
+      setSelectedProduct(p);
+      const c = p.colors.find(c => c.id === colorIdFromState) || p.colors[0];
+      setSelectedColor(c);
+    }
+  }, [productId, colorIdFromState, products]);
 
   // Стейт для логотипа
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoScale, setLogoScale] = useState<number>(100);
-  const [logoPos, setLogoPos] = useState({ x: 50, y: 35 });
+  const [logoPos, setLogoPos] = useState({ x: 50, y: 50 }); // в процентах внутри зоны
 
   // Стейт для текста
   const [customText, setCustomText] = useState<string>("");
   const [textFont, setTextFont] = useState<string>(FONT_OPTIONS[0].value);
   const [textColor, setTextColor] = useState<string>(TEXT_COLORS[0].hex);
-  const [textPos, setTextPos] = useState({ x: 50, y: 30 });
   const [textScale, setTextScale] = useState<number>(100);
+  const [textPos, setTextPos] = useState({ x: 50, y: 50 }); // в процентах внутри зоны
 
   // Стейт для AI Мокапа
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(null);
-  const [printType, setPrintType] = useState("DTF3");
 
-  // Ссылки для drag-and-drop
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const dragTarget = React.useRef<"text" | "logo" | null>(null);
+  // Ссылки
+  const previewRef = useRef<HTMLDivElement>(null);
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const dragTarget = useRef<"text" | "logo" | null>(null);
 
-  const handleMouseDown =
-    (target: "text" | "logo") => (e: React.MouseEvent) => {
-      e.preventDefault();
-      dragTarget.current = target;
-    };
+  // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
+  const handleProductChange = (newProductId: string) => {
+    const product = products.find(p => p.id === newProductId) || products[0];
+    setSelectedProduct(product);
+    setSelectedColor(product.colors[0]);
+    // Опционально: обновляем URL
+    navigate(`/editor/${product.id}`, { state: { colorId: product.colors[0].id }, replace: true });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setLogoUrl(URL.createObjectURL(file));
+      setLogoScale(100);
+      setLogoPos({ x: 50, y: 50 });
+    }
+  };
+
+  // --- DRAG AND DROP (ВНУТРИ ЗОНЫ) ---
+  const handleMouseDown = (target: "text" | "logo") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragTarget.current = target;
+  };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragTarget.current || !containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = Math.max(
-      0,
-      Math.min(100, ((e.clientX - rect.left) / rect.width) * 100),
-    );
-    const y = Math.max(
-      0,
-      Math.min(100, ((e.clientY - rect.top) / rect.height) * 100),
-    );
+    if (!dragTarget.current || !zoneRef.current) return;
+    
+    const rect = zoneRef.current.getBoundingClientRect();
+    
+    // Вычисляем позицию мыши относительно зоны в процентах
+    let x = ((e.clientX - rect.left) / rect.width) * 100;
+    let y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    // Ограничиваем перемещение строго внутри зоны (0% - 100%)
+    x = Math.max(0, Math.min(100, x));
+    y = Math.max(0, Math.min(100, y));
 
     if (dragTarget.current === "text") {
       setTextPos({ x, y });
@@ -111,44 +137,41 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
     dragTarget.current = null;
   };
 
-  const colorLayerStyle = useMemo<React.CSSProperties>(() => {
-    const maskUrl = `url(${MODEL_ASSETS[selectedModel].mask})`;
-
-    return {
-      backgroundColor: selectedColor.hex,
-      mixBlendMode: "multiply",
-      WebkitMaskImage: maskUrl,
-      maskImage: maskUrl,
-      WebkitMaskSize: "contain",
-      maskSize: "contain",
-      WebkitMaskPosition: "center",
-      maskPosition: "center",
-      WebkitMaskRepeat: "no-repeat",
-      maskRepeat: "no-repeat",
-    };
-  }, [selectedColor.hex, selectedModel]);
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setLogoFile(file);
-      setLogoUrl(URL.createObjectURL(file));
-      setLogoScale(100);
-    }
+  const mapColorToEnglish = (ruColor: string): string => {
+    const lower = ruColor.toLowerCase();
+    if (lower.includes('бел') || lower.includes('молочн')) return 'white';
+    if (lower.includes('черн')) return 'black';
+    if (lower.includes('красн') || lower.includes('бордов') || lower.includes('гранат') || lower.includes('вишнев')) return 'red';
+    if (lower.includes('син') || lower.includes('кобальт') || lower.includes('джинс') || lower.includes('navy') || lower.includes('royal')) return 'blue';
+    if (lower.includes('голуб')) return 'lightblue';
+    if (lower.includes('зелен') || lower.includes('лайм') || lower.includes('яблоко') || lower.includes('хаки') || lower.includes('изумруд')) return 'green';
+    if (lower.includes('желт') || lower.includes('лимон')) return 'yellow';
+    if (lower.includes('оранж') || lower.includes('абрикос')) return 'orange';
+    if (lower.includes('фиолет') || lower.includes('лавандов')) return 'purple';
+    if (lower.includes('роз') || lower.includes('орхидея') || lower.includes('фуксия') || lower.includes('candy')) return 'pink';
+    if (lower.includes('сер') || lower.includes('меланж') || lower.includes('сталь') || lower.includes('графит')) return 'gray';
+    if (lower.includes('коричн') || lower.includes('шоколад') || lower.includes('терракот')) return 'brown';
+    if (lower.includes('бежев') || lower.includes('песочн')) return 'beige';
+    if (lower.includes('бирюз')) return 'turquoise';
+    return 'white'; // По умолчанию
   };
 
+  // --- ГЕНЕРАЦИЯ AI МОКАПА ---
   const handleGenerateMockup = async () => {
-    if (!containerRef.current || !logoFile) return;
+    if (!previewRef.current) return;
     
+    // 1. Прячем пунктирные рамки зон перед скриншотом
+    setIsCapturing(true);
+    // Ждем применения стилей React
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
     let imageBlob: Blob | null = null;
     
     try {
-      // 1. Делаем снимок всего контейнера предпросмотра ДО включения лоадера
-      // Используем pixelRatio для повышения качества (например, 2)
-      imageBlob = await toBlob(containerRef.current, {
+      // 2. Делаем снимок блока предпросмотра (2D-эскиз + наложенный дизайн) ДО включения лоадера
+      imageBlob = await toBlob(previewRef.current, {
         quality: 1,
         pixelRatio: 2,
-        // Убираем cacheBust: true, так как он ломает Blob URL
       });
 
       if (!imageBlob) {
@@ -157,29 +180,48 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
     } catch (error) {
       console.error("Ошибка при создании снимка:", error);
       alert("Не удалось создать снимок для отправки.");
+      setIsCapturing(false);
       return;
     }
 
-    // ТОЛЬКО ПОСЛЕ успешного создания снимка включаем лоадер
+    // Возвращаем рамки и включаем лоадер отправки
+    setIsCapturing(false);
     setIsGenerating(true);
 
     try {
-      // 2. Собираем данные в FormData
+      // Собираем данные в FormData согласно новой спецификации API
       const formData = new FormData();
+      
+      // Определяем modelType на основе пола, типа изделия и выбранной зоны
+      const isJacket = selectedProduct.name.toLowerCase().includes('жилет');
+      const isBack = selectedZone.id === 'back';
+      
+      let currentModelType = `${modelGender}_shirt_front`;
+      if (isJacket) {
+        currentModelType = `${modelGender}_jacket`;
+      } else if (isBack) {
+        currentModelType = `${modelGender}_shirt_back`;
+      }
+
       formData.append('garmentImage', imageBlob, 'composed-garment.png');
-      // Логотип больше не отправляем, так как он уже физически на снимке
+      formData.append('modelGender', modelGender); // Возвращаем старый параметр
+      formData.append('modelType', currentModelType); // Добавляем новый параметр
+      formData.append('garmentColor', mapColorToEnglish(selectedColor.name));
       formData.append('printType', printType);
 
-      console.log('--- ОТПРАВКА НА БЭКЕНД ---');
+      console.log('=========================================');
+      console.log('🚀 ОТПРАВКА ЗАПРОСА НА БЭКЕНД');
+      console.log(`URL: ${API_BASE_URL}/api/apply-print`);
+      console.log('Метод: POST');
+      console.log('Данные (FormData):');
       for (let [key, value] of formData.entries()) {
         if (value instanceof Blob) {
-          console.log(`${key}: Blob/File (size: ${value.size} bytes, type: ${value.type}, name: ${(value as any).name || 'N/A'})`);
-          // Добавляем ссылку для просмотра отправляемой картинки
+          console.log(` - [${key}]: Файл (Blob), размер: ${value.size} байт, тип: ${value.type}`);
           if (key === 'garmentImage') {
             const debugUrl = URL.createObjectURL(value);
-            console.log(`👀 КЛИКНИТЕ СЮДА, ЧТОБЫ УВИДЕТЬ ОТПРАВЛЯЕМУЮ КАРТИНКУ: ${debugUrl}`);
+            console.log(`   👀 ССЫЛКА НА ОТПРАВЛЯЕМУЮ КАРТИНКУ: ${debugUrl}`);
             
-            // АВТОМАТИЧЕСКОЕ СКАЧИВАНИЕ ДЛЯ ПРОВЕРКИ (чтобы точно увидеть оригинал)
+            // Авто-скачивание для дебага
             const a = document.createElement('a');
             a.href = debugUrl;
             a.download = 'debug-garment-image.png';
@@ -188,36 +230,28 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
             document.body.removeChild(a);
           }
         } else {
-          console.log(`${key}: ${value}`);
+          console.log(` - [${key}]: "${value}"`);
         }
       }
+      console.log('=========================================');
 
-      // 3. Отправляем запрос на бэкенд через axios
+      // Отправляем запрос на бэкенд через axios
       const response = await axios.post(`${API_BASE_URL}/api/apply-print`, formData, {
-        responseType: 'blob', // Важно: указываем, что ожидаем бинарный файл в ответ
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        responseType: 'blob',
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       console.log('--- ОТВЕТ ОТ БЭКЕНДА ---');
       console.log('Status:', response.status, response.statusText);
 
-      // 4. Получаем бинарные данные картинки и создаем URL
+      // Получаем бинарные данные картинки и создаем URL
       const resultBlob = response.data;
-      console.log(`Получен Blob от бэкенда (size: ${resultBlob.size} bytes, type: ${resultBlob.type})`);
-      
       const imageUrl = URL.createObjectURL(resultBlob);
-      console.log('Сгенерированный локальный URL:', imageUrl);
-      
       setGeneratedMockupUrl(imageUrl);
     } catch (error: any) {
       console.error("--- ПОЛНАЯ ОШИБКА ---", error);
-      
-      // Обработка ошибок axios
       let errorMessage = "Неизвестная ошибка";
       if (axios.isAxiosError(error) && error.response) {
-        // Пытаемся прочитать JSON из Blob-ответа с ошибкой
         try {
           const errorText = await error.response.data.text();
           const errorJson = JSON.parse(errorText);
@@ -228,7 +262,6 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
       } else {
         errorMessage = error instanceof Error ? error.message : String(error);
       }
-      
       alert('Упс, ошибка: ' + errorMessage);
     } finally {
       setIsGenerating(false);
@@ -236,443 +269,336 @@ export const ProductEditor: React.FC<ProductEditorProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-slate-200 pb-20 flex flex-col">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 flex flex-col">
       <style>
-        {`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Pacifico&family=Roboto:wght@400;700&display=swap');`}
+        {`@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=Pacifico&display=swap');`}
       </style>
 
-      {/* Кнопка назад */}
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-8">
-        <button
-          onClick={onBack}
-          className="text-sm font-medium text-gray-500 hover:text-slate-900 transition-colors flex items-center gap-2"
-        >
-          &larr; Назад в каталог
-        </button>
+      {/* Навигация */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <button onClick={onBack} className="text-sm font-medium text-gray-600 hover:text-slate-900 flex items-center gap-2 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Назад в каталог
+          </button>
+          <div className="font-bold text-lg tracking-tight">B2B Merch Studio</div>
+          <div className="w-24"></div> {/* Spacer */}
+        </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 md:pt-10 w-full flex-1 flex flex-col lg:flex-row gap-12 lg:gap-16 items-start">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 w-full flex-1 flex flex-col lg:flex-row gap-8 items-start">
+        
         {/* ЛЕВАЯ КОЛОНКА: ЗОНА ПРЕДПРОСМОТРА */}
-        <div
-          ref={containerRef}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          className="relative w-full lg:w-1/2 aspect-[3/4] lg:aspect-auto lg:h-[80vh] lg:sticky lg:top-8 flex items-center justify-center bg-white rounded-3xl overflow-hidden flex-shrink-0 border border-gray-200 shadow-sm"
-        >
-          {/* Лоадер генерации AI-мокапа */}
-          {isGenerating && (
-            <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
-              <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mb-4"></div>
-              <p className="text-slate-900 font-medium animate-pulse">Нейросеть наносит принт...</p>
-              <p className="text-sm text-gray-500 mt-2">Это может занять 5-15 секунд</p>
-            </div>
-          )}
-
-          {/* Результат генерации AI-мокапа */}
-          {generatedMockupUrl ? (
-            <div className="absolute inset-0 z-40 bg-white flex items-center justify-center">
-              <img src={generatedMockupUrl} alt="AI Mockup" className="w-full h-full object-contain" />
-              <button
-                onClick={() => {
-                  URL.revokeObjectURL(generatedMockupUrl);
-                  setGeneratedMockupUrl(null);
-                }}
-                className="absolute top-6 right-6 bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-full text-sm font-medium text-slate-900 hover:bg-white transition-colors shadow-md border border-gray-200"
-              >
-                Вернуться к редактору
-              </button>
-            </div>
-          ) : null}
-
-          {/* Layer 1: Base (Нижний слой - фото модели) */}
-          <img
-            src={MODEL_ASSETS[selectedModel].base}
-            alt={`Model ${selectedModel}`}
-            className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
-          />
-
-          {/* Layer 2: Color Mask (красим только область футболки) */}
-          <div
-            className="absolute inset-0 w-full h-full z-20 pointer-events-none transition-colors duration-300"
-            style={colorLayerStyle}
-          />
-
-          {/* Layer 3: Logo (Верхний слой - логотип) */}
-          {logoUrl && (
+        <div className="w-full lg:w-1/2 lg:sticky lg:top-24">
+          <div className="bg-white p-4 rounded-3xl shadow-sm border border-gray-200">
             <div
-              onMouseDown={handleMouseDown("logo")}
-              className="absolute z-30 pointer-events-auto cursor-move hover:ring-1 hover:ring-dashed hover:ring-gray-400/50 p-2 rounded"
-              style={{
-                top: `${logoPos.y}%`,
-                left: `${logoPos.x}%`,
-                transform: "translate(-50%, -50%)",
-                width: "28%",
-              }}
+              ref={previewRef}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              className="relative w-full aspect-[3/4] bg-gray-100 rounded-2xl overflow-hidden flex items-center justify-center"
             >
+              {/* Лоадер */}
+              {isGenerating && (
+                <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+                  <p className="text-indigo-900 font-medium animate-pulse">Генерация 3D-мокапа...</p>
+                  <p className="text-sm text-gray-500 mt-2">Ожидайте 5-15 секунд</p>
+                </div>
+              )}
+
+              {/* Результат AI */}
+              {generatedMockupUrl && (
+                <div className="absolute inset-0 z-40 bg-white flex items-center justify-center">
+                  <img src={generatedMockupUrl} alt="AI Mockup" className="w-full h-full object-contain" />
+                  <button
+                    onClick={() => {
+                      URL.revokeObjectURL(generatedMockupUrl);
+                      setGeneratedMockupUrl(null);
+                    }}
+                    className="absolute top-6 right-6 bg-white/90 backdrop-blur-md px-5 py-2.5 rounded-full text-sm font-medium text-slate-900 hover:bg-white transition-colors shadow-md border border-gray-200"
+                  >
+                    Вернуться к 2D-эскизу
+                  </button>
+                </div>
+              )}
+
+              {/* 2D Эскиз (Базовая картинка) */}
               <img
-                src={logoUrl}
-                alt="Logo"
-                className="w-full h-auto object-contain transition-transform duration-100 ease-linear pointer-events-none"
-                style={{ transform: `scale(${logoScale / 100})` }}
+                src={selectedColor.image}
+                alt="Garment Flat"
+                crossOrigin="anonymous"
+                className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
               />
-            </div>
-          )}
 
-          {/* Layer 4: Text (Текстовый принт) */}
-          {customText && (
-            <div
-              className="absolute inset-0 z-30 pointer-events-none"
-              style={{
-                WebkitMaskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
-                WebkitMaskSize: "contain",
-                WebkitMaskPosition: "center",
-                maskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
-                maskSize: "contain",
-                maskPosition: "center",
-              }}
-            >
-              <div
-                onMouseDown={handleMouseDown("text")}
-                className="absolute flex items-center justify-center cursor-move pointer-events-auto hover:ring-1 hover:ring-dashed hover:ring-gray-400/50 p-2 rounded"
-                style={{
-                  top: `${textPos.y}%`,
-                  left: `${textPos.x}%`,
-                  transform: `translate(-50%, -50%) scale(${textScale / 100})`,
-                  width: "60%",
-                  color: textColor,
-                  fontFamily: textFont,
-                  textAlign: "center",
-                  whiteSpace: "pre-wrap",
-                  fontSize: "clamp(16px, 4vw, 32px)",
-                  fontWeight: textFont.includes("Pacifico") ? "normal" : "bold",
-                  lineHeight: "1.2",
-                  textShadow:
-                    textColor === "#FFFFFF"
-                      ? "0px 1px 3px rgba(0,0,0,0.3)"
-                      : "none",
-                }}
-              >
-                {customText}
-              </div>
-            </div>
-          )}
+              {/* Контейнеры областей нанесения (Зеленые зоны) */}
+              {Object.values(PRINT_AREAS).map((zone) => {
+                const isSelected = selectedZone.id === zone.id;
 
-          {/* Layer 5: Shadow Overlay (Тени поверх принта и логотипа) */}
-          <div
-            className="absolute inset-0 z-40 pointer-events-none mix-blend-multiply opacity-60"
-            style={{
-              WebkitMaskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
-              WebkitMaskSize: "contain",
-              WebkitMaskPosition: "center",
-              maskImage: `url(${MODEL_ASSETS[selectedModel].mask})`,
-              maskSize: "contain",
-              maskPosition: "center",
-            }}
-          >
-            <img
-              src={MODEL_ASSETS[selectedModel].base}
-              alt="Shadow Overlay"
-              className="w-full h-full object-contain grayscale"
-            />
+                return (
+                  <div
+                    key={zone.id}
+                    onClick={() => !isSelected && setSelectedZone(zone)}
+                    className={`absolute z-20 overflow-hidden transition-all ${
+                      isCapturing
+                        ? "border-none bg-transparent" // При скриншоте убираем все рамки и фоны
+                        : isSelected
+                        ? "border-2 border-dashed border-emerald-400 bg-emerald-400/20 cursor-default"
+                        : "border-2 border-dashed border-emerald-400/60 hover:bg-emerald-400/10 cursor-pointer"
+                    }`}
+                    style={{
+                      top: zone.top,
+                      left: zone.left,
+                      width: zone.width,
+                      height: zone.height,
+                    }}
+                  >
+                    {zone.id.includes('sleeve') && !isCapturing && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className={`w-[75%] h-[75%] rounded-full border-2 border-dashed ${isSelected ? 'border-emerald-400' : 'border-emerald-400/60'}`}></div>
+                      </div>
+                    )}
+                    {isSelected && (
+                      <div ref={zoneRef} className="absolute inset-0 w-full h-full">
+                        {/* Логотип */}
+                        {logoUrl && (
+                          <div
+                            onMouseDown={handleMouseDown("logo")}
+                            className={`absolute z-30 flex items-center justify-center p-1 rounded ${
+                              isCapturing ? "" : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                            }`}
+                            style={{
+                              top: `${logoPos.y}%`,
+                              left: `${logoPos.x}%`,
+                              transform: "translate(-50%, -50%)",
+                              width: "50%", // Базовая ширина относительно зоны
+                            }}
+                          >
+                            <img
+                              src={logoUrl}
+                              alt="Logo"
+                              className="w-full h-auto object-contain pointer-events-none"
+                              style={{ transform: `scale(${logoScale / 100})` }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Текст */}
+                        {customText && (
+                          <div
+                            onMouseDown={handleMouseDown("text")}
+                            className={`absolute z-30 flex items-center justify-center p-1 rounded ${
+                              isCapturing ? "" : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                            }`}
+                            style={{
+                              top: `${textPos.y}%`,
+                              left: `${textPos.x}%`,
+                              transform: `translate(-50%, -50%) scale(${textScale / 100})`,
+                              width: "80%",
+                              color: textColor,
+                              fontFamily: textFont,
+                              textAlign: "center",
+                              whiteSpace: "pre-wrap",
+                              fontSize: "clamp(12px, 3vw, 24px)",
+                              fontWeight: textFont.includes("Pacifico") ? "normal" : "bold",
+                              lineHeight: "1.2",
+                            }}
+                          >
+                            {customText}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* ПРАВАЯ КОЛОНКА: ПАНЕЛЬ УПРАВЛЕНИЯ */}
-        <div className="w-full lg:w-1/2 flex flex-col space-y-10 lg:py-8">
-          {/* Заголовок и цена (из каталога) */}
-          <div className="space-y-3">
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-slate-900">
-              {product.name}
-            </h1>
-            <p className="text-xl font-light text-gray-500">
-              {product.price.toFixed(2)} RUB
-            </p>
+        <div className="w-full lg:w-1/2 flex flex-col space-y-6 pb-12">
+          
+          {/* ШАГ 1: Базовые настройки */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 mb-4">1. Выбор изделия</h2>
+
+              {/* Каталог */}
+              <select
+                value={selectedProduct.id}
+                onChange={(e) => handleProductChange(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer font-medium"
+              >
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Цвет */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Цвет изделия</h3>
+              <div className="flex flex-wrap gap-3">
+                {selectedProduct.colors.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedColor(c)}
+                    title={c.name}
+                    className={`w-12 h-12 rounded-xl border-2 transition-all flex items-center justify-center focus:outline-none overflow-hidden bg-slate-50 ${
+                      selectedColor.id === c.id ? "border-indigo-500 scale-110 shadow-md" : "border-gray-200 hover:scale-105 hover:border-gray-300"
+                    }`}
+                  >
+                    <img src={c.image} alt={c.name} crossOrigin="anonymous" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="h-px w-full bg-gray-100" />
+          {/* ШАГ 2: Нанесение */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
+            <h2 className="text-lg font-bold text-slate-900">2. Параметры нанесения</h2>
+            
+            {/* Зона */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Область печати</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.values(PRINT_AREAS).map((zone) => (
+                  <button
+                    key={zone.id}
+                    onClick={() => setSelectedZone(zone)}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                      selectedZone.id === zone.id ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {zone.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          {/* Блок "Модель" (Pill-style tabs) */}
-          {!isPolo && (
-            <div className="space-y-4">
-              <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest">
-                Модель
-              </h3>
-              <div className="flex bg-gray-50 p-1 rounded-full w-fit border border-gray-100">
+            {/* Тип печати */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Технология печати</h3>
+              <select
+                value={printType}
+                onChange={(e) => setPrintType(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer"
+              >
+                {PRINT_TYPES.map((pt) => (
+                  <option key={pt.id} value={pt.id}>{pt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Пол модели (AI) */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Пол модели (AI)</h3>
+              <div className="flex bg-slate-100 p-1 rounded-xl">
                 <button
-                  onClick={() => setSelectedModel("man")}
-                  className={`px-8 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
-                    selectedModel === "man"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-gray-500 hover:text-slate-900"
+                  onClick={() => setModelGender('man')}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+                    modelGender === 'man' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  Мужская
+                  Мужчина
                 </button>
                 <button
-                  onClick={() => setSelectedModel("woman")}
-                  className={`px-8 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
-                    selectedModel === "woman"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-gray-500 hover:text-slate-900"
+                  onClick={() => setModelGender('woman')}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
+                    modelGender === 'woman' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  Женская
+                  Женщина
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Блок "Цвет" (Swatches из каталога) */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest">
-              Цвет
-            </h3>
-            <div className="flex flex-wrap gap-4">
-              {product.colors.map((c) => (
-                <div key={c.id} className="flex flex-col items-center gap-2">
-                  <button
-                    onClick={() => setSelectedColor(c)}
-                    title={c.name}
-                    className={`w-10 h-10 rounded-full border transition-all duration-300 flex items-center justify-center focus:outline-none ${
-                      selectedColor.id === c.id
-                        ? "ring-1 ring-offset-4 ring-slate-900 border-transparent scale-110"
-                        : "border-gray-200 hover:border-gray-400 hover:scale-105"
-                    }`}
-                    style={{ backgroundColor: c.hex }}
-                  />
-                  <span
-                    className={`text-[10px] font-medium transition-colors max-w-[60px] text-center leading-tight ${
-                      selectedColor.id === c.id
-                        ? "text-slate-900"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {c.name}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
 
-          <div className="h-px w-full bg-gray-100" />
+          {/* ШАГ 3: Дизайн */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-200 space-y-6">
+            <h2 className="text-lg font-bold text-slate-900">3. Ваш дизайн</h2>
+            
+            {/* Логотип */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4"/> Логотип</h3>
+              {!logoUrl ? (
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors group">
+                  <UploadCloud className="w-6 h-6 text-slate-400 group-hover:text-indigo-500 transition-colors mb-2" />
+                  <span className="text-sm font-medium text-slate-600">Загрузить PNG / SVG</span>
+                  <input type="file" className="hidden" accept=".svg,.png,.jpg,.jpeg" onChange={handleFileUpload} />
+                </label>
+              ) : (
+                <div className="p-4 bg-slate-50 border border-gray-200 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg border border-gray-200 p-1 flex items-center justify-center">
+                        <img src={logoUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                      </div>
+                      <span className="text-sm font-medium text-slate-700">Логотип загружен</span>
+                    </div>
+                    <button onClick={() => { setLogoUrl(null); }} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-slate-500 font-medium">
+                      <span>Масштаб</span><span>{logoScale}%</span>
+                    </div>
+                    <input type="range" min="30" max="200" value={logoScale} onChange={(e) => setLogoScale(Number(e.target.value))} className="w-full accent-indigo-600" />
+                  </div>
+                </div>
+              )}
+            </div>
 
-          {/* Блок "Текст" */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest">
-              Ваш текст
-            </h3>
-            <div className="space-y-4">
+            <div className="h-px w-full bg-gray-100" />
+
+            {/* Текст */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2"><Type className="w-4 h-4"/> Текст</h3>
               <textarea
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
                 placeholder="Введите надпись..."
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none resize-none transition-shadow"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none mb-4"
                 rows={2}
               />
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1 space-y-2">
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                    Шрифт
-                  </label>
-                  <select
-                    value={textFont}
-                    onChange={(e) => setTextFont(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-slate-900 outline-none text-sm bg-white cursor-pointer"
-                  >
-                    {FONT_OPTIONS.map((font) => (
-                      <option
-                        key={font.label}
-                        value={font.value}
-                        style={{ fontFamily: font.value }}
-                      >
-                        {font.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                    Цвет текста
-                  </label>
-                  <div className="flex gap-2">
-                    {TEXT_COLORS.map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setTextColor(c.hex)}
-                        title={c.id}
-                        className={`w-9 h-9 rounded-full border transition-all focus:outline-none ${
-                          textColor === c.hex
-                            ? "ring-2 ring-offset-2 ring-slate-900 border-transparent scale-110"
-                            : "border-gray-200 hover:scale-105"
-                        }`}
-                        style={{ backgroundColor: c.hex }}
-                      />
-                    ))}
-                  </div>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <select value={textFont} onChange={(e) => setTextFont(e.target.value)} className="px-3 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white">
+                  {FONT_OPTIONS.map((font) => <option key={font.label} value={font.value} style={{ fontFamily: font.value }}>{font.label}</option>)}
+                </select>
+                <div className="flex gap-2 items-center justify-end">
+                  {TEXT_COLORS.map((c) => (
+                    <button key={c.id} onClick={() => setTextColor(c.hex)} className={`w-8 h-8 rounded-full border-2 transition-all ${textColor === c.hex ? "border-indigo-500 scale-110" : "border-gray-200 hover:scale-105"}`} style={{ backgroundColor: c.hex }} />
+                  ))}
                 </div>
               </div>
-              
-              {/* Ползунок масштаба текста */}
-              <div className="space-y-3 pt-4 border-t border-gray-50">
-                <div className="flex justify-between text-xs uppercase tracking-widest">
-                  <span className="text-gray-500 font-medium">Размер текста</span>
-                  <span className="text-slate-900 font-medium">
-                    {textScale}%
-                  </span>
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs text-slate-500 font-medium">
+                  <span>Размер текста</span><span>{textScale}%</span>
                 </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="200"
-                  value={textScale}
-                  onChange={(e) => setTextScale(Number(e.target.value))}
-                  className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer accent-slate-900"
-                />
+                <input type="range" min="50" max="200" value={textScale} onChange={(e) => setTextScale(Number(e.target.value))} className="w-full accent-indigo-600" />
               </div>
             </div>
           </div>
 
-          <div className="h-px w-full bg-gray-100" />
-
-          {/* Блок "Дизайн" */}
-          <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest">
-              Ваш логотип
-            </h3>
-
-            {!logoUrl ? (
-              <label className="flex flex-col items-center justify-center w-full h-32 border border-gray-300 border-dashed rounded-2xl cursor-pointer bg-white hover:bg-gray-50 transition-colors group">
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <div className="w-10 h-10 mb-3 rounded-full bg-gray-50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <UploadCloud className="w-5 h-5 text-slate-900" />
-                  </div>
-                  <p className="text-sm text-slate-900 font-medium">
-                    Загрузить логотип
-                  </p>
-                  <p className="text-xs text-gray-400 font-light mt-1">
-                    SVG, PNG, JPG
-                  </p>
-                </div>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".svg,.png,.jpg,.jpeg"
-                  onChange={handleFileUpload}
-                />
-              </label>
+          {/* ШАГ 4: Генерация */}
+          <button
+            onClick={handleGenerateMockup}
+            disabled={isGenerating || (!logoUrl && !customText)}
+            className="w-full bg-slate-900 hover:bg-indigo-600 disabled:bg-slate-300 text-white py-4 rounded-2xl font-bold text-base transition-all shadow-lg shadow-slate-900/20 flex items-center justify-center gap-3"
+          >
+            {isGenerating ? (
+              <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Создаем магию...</>
             ) : (
-              <div className="p-5 bg-white border border-gray-100 rounded-2xl shadow-sm space-y-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-50 rounded-xl border border-gray-100 p-2 flex items-center justify-center">
-                      <img
-                        src={logoUrl}
-                        alt="Preview"
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        Логотип загружен
-                      </p>
-                      <button
-                        onClick={() => {
-                          setLogoUrl(null);
-                          setLogoFile(null);
-                          if (generatedMockupUrl) {
-                            URL.revokeObjectURL(generatedMockupUrl);
-                            setGeneratedMockupUrl(null);
-                          }
-                        }}
-                        className="text-xs text-red-500 hover:text-red-600 mt-1 flex items-center gap-1 transition-colors"
-                      >
-                        <Trash2 className="w-3 h-3" /> Удалить
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 pt-4 border-t border-gray-50">
-                  <div className="flex justify-between text-xs uppercase tracking-widest">
-                    <span className="text-gray-500 font-medium">Масштаб</span>
-                    <span className="text-slate-900 font-medium">
-                      {logoScale}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="150"
-                    value={logoScale}
-                    onChange={(e) => setLogoScale(Number(e.target.value))}
-                    className="w-full h-1 bg-gray-200 rounded-full appearance-none cursor-pointer accent-slate-900"
-                  />
-                </div>
-              </div>
+              "Сгенерировать 3D-мокап"
             )}
-          </div>
+          </button>
 
-          {/* Блок "AI Мокап" */}
-          {logoUrl && (
-            <>
-              <div className="h-px w-full bg-gray-100" />
-              <div className="space-y-4">
-                <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                  </span>
-                  AI Генерация
-                </h3>
-                <div className="p-5 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 rounded-2xl shadow-sm space-y-4">
-                  <p className="text-sm text-indigo-900">
-                    Посмотрите, как будет выглядеть принт в реальности с помощью нейросети Imagen 3.
-                  </p>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-indigo-800 font-bold uppercase tracking-wider">
-                      Тип печати
-                    </label>
-                    <select
-                      value={printType}
-                      onChange={(e) => setPrintType(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm bg-white cursor-pointer"
-                    >
-                      <option value="DTF3">DTF3</option>
-                      <option value="B2">B2</option>
-                      <option value="D2">D2</option>
-                      <option value="F1">F1</option>
-                      <option value="F2">F2</option>
-                      <option value="DTG2">DTG2</option>
-                    </select>
-                  </div>
-                  <button
-                    onClick={handleGenerateMockup}
-                    disabled={isGenerating}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white py-3 rounded-xl font-medium text-sm transition-all shadow-sm flex items-center justify-center gap-2"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Генерация...
-                      </>
-                    ) : (
-                      "Сгенерировать фотореалистичный мокап"
-                    )}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Кнопка добавления в корзину */}
-          <div className="pt-6">
-            <button className="w-full bg-slate-900 hover:bg-black text-white py-5 rounded-2xl font-semibold text-sm uppercase tracking-widest transition-all active:scale-[0.99] shadow-lg shadow-slate-900/20">
-              Добавить в корзину
-            </button>
-          </div>
         </div>
       </div>
     </div>
   );
 };
+
+export default ProductEditor;

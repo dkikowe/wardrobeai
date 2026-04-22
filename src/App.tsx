@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { LandingPage } from './components/LandingPage';
 import { CatalogPage } from './components/CatalogPage';
 import { ProductEditor } from './components/ProductEditor';
@@ -6,61 +6,50 @@ import { MerchViewer } from './components/MerchViewer';
 import { getProductsFromCatalog } from './utils/catalogAdapter';
 import { Product, Color } from './components/merch-widget-v2/types';
 
-type AppStep = 'landing' | 'catalog' | 'editor' | 'viewer';
-
-function App() {
-  const [step, setStep] = useState<AppStep>('landing');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedColor, setSelectedColor] = useState<Color | null>(null);
-  
-  // Загружаем и адаптируем данные из catalog.json
+function AppRoutes() {
+  const navigate = useNavigate();
   const products = getProductsFromCatalog();
 
   const handleStart = () => {
-    setStep('catalog');
+    navigate('/catalog');
   };
 
   const handleViewer = () => {
-    setStep('viewer');
+    navigate('/viewer');
   };
 
   const handleSelectProduct = (product: Product, color: Color) => {
-    setSelectedProduct(product);
-    setSelectedColor(color);
-    setStep('editor');
+    // Передаем id продукта и цвета через state роутера
+    navigate(`/editor/${product.id}`, { state: { colorId: color.id } });
   };
 
   const handleBackToCatalog = () => {
-    setStep('catalog');
+    navigate('/catalog');
   };
 
   const handleBackToLanding = () => {
-    setStep('landing');
+    navigate('/');
   };
 
   return (
-    <>
-      {step === 'landing' && (
-        <LandingPage onStart={handleStart} onViewer={handleViewer} />
-      )}
+    <Routes>
+      <Route path="/" element={<LandingPage onStart={handleStart} onViewer={handleViewer} />} />
       
-      {step === 'catalog' && (
+      <Route path="/catalog" element={
         <CatalogPage 
           products={products} 
           onSelect={handleSelectProduct} 
         />
-      )}
+      } />
 
-      {step === 'editor' && selectedProduct && selectedColor && (
+      <Route path="/editor/:productId" element={
         <ProductEditor 
-          key={`${selectedProduct.id}-${selectedColor.id}`}
-          product={selectedProduct}
-          initialColor={selectedColor}
+          products={products}
           onBack={handleBackToCatalog} 
         />
-      )}
+      } />
 
-      {step === 'viewer' && (
+      <Route path="/viewer" element={
         <div className="min-h-screen bg-white">
           <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-8">
             <button
@@ -72,8 +61,16 @@ function App() {
           </div>
           <MerchViewer />
         </div>
-      )}
-    </>
+      } />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppRoutes />
+    </Router>
   );
 }
 
