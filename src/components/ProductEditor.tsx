@@ -15,67 +15,8 @@ import { Product, Color } from "./merch-widget-v2/types";
 const API_BASE_URL = "https://wardrobe-back-production.up.railway.app";
 // const API_BASE_URL = "http://localhost:3000";
 
-// --- ШАГ 2: ОБЛАСТИ НАНЕСЕНИЯ (Зеленые зоны) ---
-const PRINT_AREAS: Record<
-  string,
-  {
-    id: string;
-    label: string;
-    top: string;
-    left: string;
-    width: string;
-    height: string;
-  }
-> = {
-  chest: {
-    id: "chest",
-    label: "Грудь (Большая)",
-    top: "25%",
-    left: "28%",
-    width: "44%",
-    height: "42%",
-  },
-  chest_small: {
-    id: "chest_small",
-    label: "Грудь (Лого)",
-    top: "27%",
-    left: "42%",
-    width: "16%",
-    height: "8%",
-  },
-  bottom: {
-    id: "bottom",
-    label: "Низ",
-    top: "67%",
-    left: "28%",
-    width: "44%",
-    height: "12%",
-  },
-  back: {
-    id: "back",
-    label: "Спина",
-    top: "25%",
-    left: "28%",
-    width: "44%",
-    height: "42%",
-  },
-  left_sleeve: {
-    id: "left_sleeve",
-    label: "Левый рукав",
-    top: "40%",
-    left: "78%",
-    width: "12%",
-    height: "9%",
-  },
-  right_sleeve: {
-    id: "right_sleeve",
-    label: "Правый рукав",
-    top: "40%",
-    left: "10%",
-    width: "12%",
-    height: "9%",
-  },
-};
+// Временно отключили выбор области нанесения.
+// Если понадобится вернуть, можно восстановить PRINT_AREAS и UI кнопки выбора зоны.
 
 const PRINT_TYPES = [
   { id: "DTF3", label: "DTF Печать (Яркая, пленка)" },
@@ -118,7 +59,6 @@ export const ProductEditor: React.FC<{
   const [selectedProduct, setSelectedProduct] =
     useState<Product>(initialProduct);
   const [selectedColor, setSelectedColor] = useState<Color>(initialColor);
-  const [selectedZone, setSelectedZone] = useState(PRINT_AREAS.chest);
   const [printType, setPrintType] = useState(PRINT_TYPES[0].id);
   const [modelGender, setModelGender] = useState<"man" | "woman">("man");
 
@@ -146,14 +86,12 @@ export const ProductEditor: React.FC<{
 
   // Стейт для AI Мокапа
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isCapturing, setIsCapturing] = useState(false);
   const [generatedMockupUrl, setGeneratedMockupUrl] = useState<string | null>(
     null,
   );
 
   // Ссылки
   const previewRef = useRef<HTMLDivElement>(null);
-  const zoneRef = useRef<HTMLDivElement>(null);
   const dragTarget = useRef<"text" | "logo" | null>(null);
 
   // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
@@ -177,7 +115,7 @@ export const ProductEditor: React.FC<{
     }
   };
 
-  // --- DRAG AND DROP (ВНУТРИ ЗОНЫ) ---
+  // --- DRAG AND DROP (ПО ВСЕМУ ПРЕВЬЮ) ---
   const handleMouseDown =
     (target: "text" | "logo") => (e: React.MouseEvent) => {
       e.preventDefault();
@@ -185,9 +123,9 @@ export const ProductEditor: React.FC<{
     };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragTarget.current || !zoneRef.current) return;
+    if (!dragTarget.current || !previewRef.current) return;
 
-    const rect = zoneRef.current.getBoundingClientRect();
+    const rect = previewRef.current.getBoundingClientRect();
 
     // Вычисляем позицию мыши относительно зоны в процентах
     let x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -208,70 +146,9 @@ export const ProductEditor: React.FC<{
     dragTarget.current = null;
   };
 
-  const mapColorToEnglish = (ruColor: string): string => {
-    const lower = ruColor.toLowerCase();
-    if (lower.includes("бел") || lower.includes("молочн")) return "white";
-    if (lower.includes("черн")) return "black";
-    if (
-      lower.includes("красн") ||
-      lower.includes("бордов") ||
-      lower.includes("гранат") ||
-      lower.includes("вишнев")
-    )
-      return "red";
-    if (
-      lower.includes("син") ||
-      lower.includes("кобальт") ||
-      lower.includes("джинс") ||
-      lower.includes("navy") ||
-      lower.includes("royal")
-    )
-      return "blue";
-    if (lower.includes("голуб")) return "lightblue";
-    if (
-      lower.includes("зелен") ||
-      lower.includes("лайм") ||
-      lower.includes("яблоко") ||
-      lower.includes("хаки") ||
-      lower.includes("изумруд")
-    )
-      return "green";
-    if (lower.includes("желт") || lower.includes("лимон")) return "yellow";
-    if (lower.includes("оранж") || lower.includes("абрикос")) return "orange";
-    if (lower.includes("фиолет") || lower.includes("лавандов")) return "purple";
-    if (
-      lower.includes("роз") ||
-      lower.includes("орхидея") ||
-      lower.includes("фуксия") ||
-      lower.includes("candy")
-    )
-      return "pink";
-    if (
-      lower.includes("сер") ||
-      lower.includes("меланж") ||
-      lower.includes("сталь") ||
-      lower.includes("графит")
-    )
-      return "gray";
-    if (
-      lower.includes("коричн") ||
-      lower.includes("шоколад") ||
-      lower.includes("терракот")
-    )
-      return "brown";
-    if (lower.includes("бежев") || lower.includes("песочн")) return "beige";
-    if (lower.includes("бирюз")) return "turquoise";
-    return "white"; // По умолчанию
-  };
-
   // --- ГЕНЕРАЦИЯ AI МОКАПА ---
   const handleGenerateMockup = async () => {
     if (!previewRef.current) return;
-
-    // 1. Прячем пунктирные рамки зон перед скриншотом
-    setIsCapturing(true);
-    // Ждем применения стилей React
-    await new Promise((resolve) => setTimeout(resolve, 150));
 
     let imageBlob: Blob | null = null;
 
@@ -288,33 +165,18 @@ export const ProductEditor: React.FC<{
     } catch (error) {
       console.error("Ошибка при создании снимка:", error);
       alert("Не удалось создать снимок для отправки.");
-      setIsCapturing(false);
       return;
     }
 
-    // Возвращаем рамки и включаем лоадер отправки
-    setIsCapturing(false);
+    // Включаем лоадер отправки
     setIsGenerating(true);
 
     try {
-      // Собираем данные в FormData согласно новой спецификации API
+      // Бэкенд принимает только эти поля
       const formData = new FormData();
 
-      // Определяем modelType на основе пола, типа изделия и выбранной зоны
-      const isJacket = selectedProduct.name.toLowerCase().includes("жилет");
-      const isBack = selectedZone.id === "back";
-
-      let currentModelType = `${modelGender}_shirt_front`;
-      if (isJacket) {
-        currentModelType = `${modelGender}_jacket`;
-      } else if (isBack) {
-        currentModelType = `${modelGender}_shirt_back`;
-      }
-
       formData.append("garmentImage", imageBlob, "composed-garment.png");
-      formData.append("modelGender", modelGender); // Возвращаем старый параметр
-      formData.append("modelType", currentModelType); // Добавляем новый параметр
-      formData.append("garmentColor", mapColorToEnglish(selectedColor.name));
+      formData.append("modelGender", modelGender);
       formData.append("printType", printType);
 
       console.log("=========================================");
@@ -330,14 +192,6 @@ export const ProductEditor: React.FC<{
           if (key === "garmentImage") {
             const debugUrl = URL.createObjectURL(value);
             console.log(`   👀 ССЫЛКА НА ОТПРАВЛЯЕМУЮ КАРТИНКУ: ${debugUrl}`);
-
-            // Авто-скачивание для дебага
-            const a = document.createElement("a");
-            a.href = debugUrl;
-            a.download = "debug-garment-image.png";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
           }
         } else {
           console.log(` - [${key}]: "${value}"`);
@@ -457,98 +311,51 @@ export const ProductEditor: React.FC<{
                 className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
               />
 
-              {/* Контейнеры областей нанесения (Зеленые зоны) */}
-              {Object.values(PRINT_AREAS).map((zone) => {
-                const isSelected = selectedZone.id === zone.id;
+              {/* Логотип */}
+              {logoUrl && (
+                <div
+                  onMouseDown={handleMouseDown("logo")}
+                  className="absolute z-30 flex items-center justify-center p-1 rounded pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                  style={{
+                    top: `${logoPos.y}%`,
+                    left: `${logoPos.x}%`,
+                    transform: "translate(-50%, -50%)",
+                    width: "20%",
+                  }}
+                >
+                  <img
+                    src={logoUrl}
+                    alt="Logo"
+                    className="w-full h-auto object-contain pointer-events-none"
+                    style={{ transform: `scale(${logoScale / 100})` }}
+                  />
+                </div>
+              )}
 
-                return (
-                  <div
-                    key={zone.id}
-                    onClick={() => !isSelected && setSelectedZone(zone)}
-                    className={`absolute z-20 overflow-hidden transition-all ${
-                      isCapturing
-                        ? "border-none bg-transparent" // При скриншоте убираем все рамки и фоны
-                        : isSelected
-                          ? "border-2 border-dashed border-emerald-400 bg-emerald-400/20 cursor-default"
-                          : "border-2 border-dashed border-emerald-400/60 hover:bg-emerald-400/10 cursor-pointer"
-                    }`}
-                    style={{
-                      top: zone.top,
-                      left: zone.left,
-                      width: zone.width,
-                      height: zone.height,
-                    }}
-                  >
-                    {zone.id.includes("sleeve") && !isCapturing && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div
-                          className={`w-[75%] h-[75%] rounded-full border-2 border-dashed ${isSelected ? "border-emerald-400" : "border-emerald-400/60"}`}
-                        ></div>
-                      </div>
-                    )}
-                    {isSelected && (
-                      <div
-                        ref={zoneRef}
-                        className="absolute inset-0 w-full h-full"
-                      >
-                        {/* Логотип */}
-                        {logoUrl && (
-                          <div
-                            onMouseDown={handleMouseDown("logo")}
-                            className={`absolute z-30 flex items-center justify-center p-1 rounded ${
-                              isCapturing
-                                ? ""
-                                : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
-                            }`}
-                            style={{
-                              top: `${logoPos.y}%`,
-                              left: `${logoPos.x}%`,
-                              transform: "translate(-50%, -50%)",
-                              width: "50%", // Базовая ширина относительно зоны
-                            }}
-                          >
-                            <img
-                              src={logoUrl}
-                              alt="Logo"
-                              className="w-full h-auto object-contain pointer-events-none"
-                              style={{ transform: `scale(${logoScale / 100})` }}
-                            />
-                          </div>
-                        )}
-
-                        {/* Текст */}
-                        {customText && (
-                          <div
-                            onMouseDown={handleMouseDown("text")}
-                            className={`absolute z-30 flex items-center justify-center p-1 rounded ${
-                              isCapturing
-                                ? ""
-                                : "pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
-                            }`}
-                            style={{
-                              top: `${textPos.y}%`,
-                              left: `${textPos.x}%`,
-                              transform: `translate(-50%, -50%) scale(${textScale / 100})`,
-                              width: "80%",
-                              color: textColor,
-                              fontFamily: textFont,
-                              textAlign: "center",
-                              whiteSpace: "pre-wrap",
-                              fontSize: "clamp(12px, 3vw, 24px)",
-                              fontWeight: textFont.includes("Pacifico")
-                                ? "normal"
-                                : "bold",
-                              lineHeight: "1.2",
-                            }}
-                          >
-                            {customText}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {/* Текст */}
+              {customText && (
+                <div
+                  onMouseDown={handleMouseDown("text")}
+                  className="absolute z-30 flex items-center justify-center p-1 rounded pointer-events-auto cursor-move hover:ring-2 hover:ring-indigo-500/50"
+                  style={{
+                    top: `${textPos.y}%`,
+                    left: `${textPos.x}%`,
+                    transform: `translate(-50%, -50%) scale(${textScale / 100})`,
+                    width: "30%",
+                    color: textColor,
+                    fontFamily: textFont,
+                    textAlign: "center",
+                    whiteSpace: "pre-wrap",
+                    fontSize: "clamp(12px, 3vw, 24px)",
+                    fontWeight: textFont.includes("Pacifico")
+                      ? "normal"
+                      : "bold",
+                    lineHeight: "1.2",
+                  }}
+                >
+                  {customText}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -611,27 +418,14 @@ export const ProductEditor: React.FC<{
               2. Параметры нанесения
             </h2>
 
-            {/* Зона */}
+            {/* Временно отключили выбор области нанесения.
             <div>
               <h3 className="text-sm font-semibold text-slate-700 mb-3">
                 Область печати
               </h3>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.values(PRINT_AREAS).map((zone) => (
-                  <button
-                    key={zone.id}
-                    onClick={() => setSelectedZone(zone)}
-                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all border ${
-                      selectedZone.id === zone.id
-                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                        : "bg-white border-gray-200 text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    {zone.label}
-                  </button>
-                ))}
-              </div>
+              ...
             </div>
+            */}
 
             {/* Тип печати */}
             <div>
